@@ -1,13 +1,15 @@
 import Big from "big.js";
+import dotenv from "dotenv";
 import { CallData, Contract, Account, RpcProvider } from "starknet";
-import { initDefaultLogger, readByLine } from "@alfar/helpers";
+import { initDefaultLogger, readByLine, Telegram } from "@alfar/helpers";
 
 const SLEEP_BETWEEN_ACCOUNTS_SEC = 10 * 60;
-const MAX_WITHDRAW_FEE_USD = 0.7;
+const MAX_WITHDRAW_FEE_USD = 0.8;
 const UPDATE_ETH_PRICE_MS = 15 * 60 * 1000;
 const CHECK_FEE_SEC = 10 * 60;
 const MAX_ERRORS = 3;
 const MIN_USD_TO_TRANSFER = 5;
+const SLEEP_ON_ERROR_SEC = 2 * 60;
 
 const STARKNET_RPC = "https://starknet-mainnet.public.blastapi.io";
 const EXPLORER_URL = "https://starkscan.co/tx";
@@ -17,10 +19,24 @@ const ETH_ADDRESS =
 let lastEthUpdateTimestamp = 0;
 let ethPrice = null;
 
+dotenv.config();
+const { TG_TOKEN, TG_CHAT_ID } = process.env;
+
 const logger = initDefaultLogger("debug");
+const telegram = new Telegram(TG_TOKEN, [Number(TG_CHAT_ID)]);
+
+const tgSend = async (text) => {
+  try {
+    await telegram.sendMessage(text);
+  } catch (error) {
+    console.error(error);
+    logger.error(error.message);
+  }
+};
 
 const sleep = async (sec) => {
   logger.info(`sleep ${sec}s`);
+  await tgSend(`sleep ${sec}s`);
   return await new Promise((r) => setTimeout(r, Math.round(sec * 1000)));
 };
 
@@ -30,6 +46,7 @@ const getEthPrice = async () => {
   }
 
   logger.info("updating eth price");
+  await tgSend("updating eth price");
 
   const params = { ids: ["ethereum"], vs_currencies: "usd" };
   const urlParams = new URLSearchParams(params).toString();
@@ -60,36 +77,14 @@ const waitFee = async (account, tx) => {
 
     if (feeUsd < MAX_WITHDRAW_FEE_USD) {
       logger.info(`good fee $${feeUsd}`);
+      await tgSend(`good fee $${feeUsd}`);
       return suggestedMaxFee;
     }
 
-    logger.info(`bad fee $${feeUsd}`);
+    logger.warn(`bad fee $${feeUsd}`);
+    await tgSend(`bad fee $${feeUsd}`);
 
     await sleep(CHECK_FEE_SEC);
-  }
-};
-
-const waitTxStatus = async (provider, txHash) => {
-  while (true) {
-    const res = await provider.getTransactionReceipt(txHash);
-
-    if (
-      res.status === "ACCEPTED_ON_L2" &&
-      res.finality_status === "ACCEPTED_ON_L2" &&
-      res.execution_status === "SUCCEEDED"
-    ) {
-      return true;
-    }
-
-    if (res.status === "REJECTED" || res.execution_status === "REJECTED") {
-      throw new Error("rejected");
-    }
-
-    if (res.status === "REVERTED" || res.execution_status === "REVERTED") {
-      throw new Error("reverted");
-    }
-
-    await sleep(2);
   }
 };
 
@@ -104,7 +99,7 @@ const transfer = async (provider, contract, prkey, address, recipient) => {
     throw new Error(`usd balance too low $${usdBalance}`);
   }
 
-  logger.info(`usd balance: $${usdBalance}`);
+  await tgSend(`usd balance: $${usdBalance}`);
 
   const suggestedMaxFee = await waitFee(account, {
     contractAddress: ETH_ADDRESS,
@@ -127,8 +122,12 @@ const transfer = async (provider, contract, prkey, address, recipient) => {
   });
 
   logger.info(`${EXPLORER_URL}/${transaction_hash}`);
+  await tgSend(`${EXPLORER_URL}/${transaction_hash}`);
 
-  await waitTxStatus(provider, transaction_hash);
+  await provider.waitForTransaction(transaction_hash, {
+    successStates: ["ACCEPTED_ON_L2", "ACCEPTED_ON_L1`"],
+    retryInterval: 2000,
+  });
 };
 
 const main = async () => {
@@ -145,19 +144,20 @@ const main = async () => {
   for (let idx = 0; idx < data.length; idx += 1) {
     const item = data[idx];
     const [name, prkey, address, recipient] = item.split(",");
-    logger.info(`${idx}/${data.length} ${name}`);
+    await tgSend(`${idx}/${data.length} ${name}`);
 
     try {
       await transfer(provider, contract, prkey, address, recipient);
       errors = 0;
+      await sleep(SLEEP_BETWEEN_ACCOUNTS_SEC);
     } catch (error) {
-      logger.error(error);
+      console.error(error);
+      logger.error(error.message);
+      await tgSend(error.message);
       errors += 1;
+      if (errors >= MAX_ERRORS) throw new Error("too much errors");
+      await sleep(SLEEP_ON_ERROR_SEC);
     }
-
-    if (errors >= MAX_ERRORS) throw new Error("too much errors");
-
-    await sleep(SLEEP_BETWEEN_ACCOUNTS_SEC);
   }
 };
 
