@@ -3,10 +3,10 @@ import dotenv from "dotenv";
 import { CallData, Contract, Account, RpcProvider } from "starknet";
 import { initDefaultLogger, readByLine, Telegram } from "@alfar/helpers";
 
-const SLEEP_BETWEEN_ACCOUNTS_SEC = 10 * 60;
-const MAX_WITHDRAW_FEE_USD = 0.8;
+const SLEEP_BETWEEN_ACCOUNTS_SEC = 2 * 60;
+const MAX_WITHDRAW_FEE_USD = 1;
 const UPDATE_ETH_PRICE_MS = 15 * 60 * 1000;
-const CHECK_FEE_SEC = 10 * 60;
+const CHECK_FEE_SEC = 2 * 60;
 const MAX_ERRORS = 3;
 const MIN_USD_TO_TRANSFER = 5;
 const SLEEP_ON_ERROR_SEC = 2 * 60;
@@ -144,6 +144,7 @@ const main = async () => {
   for (let idx = 0; idx < data.length; idx += 1) {
     const item = data[idx];
     const [name, prkey, address, recipient] = item.split(",");
+    logger.info(`${idx}/${data.length} ${name}`);
     await tgSend(`${idx}/${data.length} ${name}`);
 
     try {
