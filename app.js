@@ -4,7 +4,7 @@ import { CallData, Contract, Account, RpcProvider } from "starknet";
 import { initDefaultLogger, readByLine, Telegram } from "@alfar/helpers";
 
 const SLEEP_BETWEEN_ACCOUNTS_SEC = 2 * 60;
-const MAX_WITHDRAW_FEE_USD = 1;
+const MAX_WITHDRAW_FEE_USD = 2;
 const UPDATE_ETH_PRICE_MS = 15 * 60 * 1000;
 const CHECK_FEE_SEC = 2 * 60;
 const MAX_ERRORS = 3;
