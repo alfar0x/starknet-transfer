@@ -29,6 +29,8 @@ const transfer = async (provider, contract, prkey, address, recipient) => {
     throw new Error(`balance too low ${readableBalance} eth`);
   }
 
+  logger.info(`balance: ${readableBalance} eth`);
+
   const { suggestedMaxFee } = await account.estimateInvokeFee({
     contractAddress: ETH_ADDRESS,
     entrypoint: "transfer",
@@ -71,7 +73,7 @@ const main = async () => {
   for (let idx = 0; idx < data.length; idx += 1) {
     const item = data[idx];
     const [prkey, address, recipient] = item.split(",");
-    logger.info(`${idx}/${data.length}`);
+    logger.info(`${idx}/${data.length} ${address}`);
 
     try {
       await transfer(provider, contract, prkey, address, recipient);
